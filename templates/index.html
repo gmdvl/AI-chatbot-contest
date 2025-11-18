@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STEM Tutor Chatbot</title>
+    <!-- Load Tailwind CSS from CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom scrollbar for chat area */
+        #chat-window::-webkit-scrollbar {
+            width: 8px;
+        }
+        #chat-window::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        #chat-window::-webkit-scrollbar-thumb {
+            background: #cbd5e1; /* slate-300 */
+            border-radius: 10px;
+        }
+        #chat-window::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8; /* slate-400 */
+        }
+        /* Custom style for code blocks (markdown) */
+        .markdown-content pre {
+            background-color: #f3f4f6;
+            padding: 0.5rem;
+            border-radius: 0.375rem;
+            overflow-x: auto;
+            margin-top: 0.5rem;
+            font-size: 0.875rem;
+        }
+        /* Style for LaTeX/MathJax display, added dynamically */
+        .math-block {
+            padding: 0.5rem 0;
+            font-size: 1.125rem;
+            font-weight: 600;
+        }
+    </style>
+    <!-- Load MathJax for rendering LaTeX/math formulas -->
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4 font-sans">
+
+    <!-- Chat Application Container -->
+    <div class="w-full max-w-lg bg-white rounded-xl shadow-2xl flex flex-col h-[85vh] min-h-[500px] overflow-hidden">
+        
+        <!-- Header -->
+        <header class="bg-teal-600 text-white p-4 shadow-md rounded-t-xl flex justify-between items-center">
+            <div>
+                <h1 class="text-xl font-bold">STEM Tutor Bot 🎓</h1>
+                <p class="text-sm opacity-90">Powered by Flask and NLP Models</p>
+            </div>
+            <div id="status" class="text-xs p-1 px-2 rounded-full bg-teal-500 font-medium transition duration-300">
+                Loading...
+            </div>
+        </header>
+
+        <!-- Chat Messages Window -->
+        <div id="chat-window" class="flex-grow p-4 space-y-4 overflow-y-auto bg-gray-50">
+            <!-- Initial welcome message from the bot -->
+            <div class="flex justify-start">
+                <div class="bg-teal-100 text-gray-800 p-3 rounded-tr-xl rounded-bl-xl rounded-br-xl shadow max-w-xs md:max-w-md markdown-content">
+                    <p class="font-semibold text-teal-700">Tutor Bot</p>
+                    <p>Hello! I'm the Enhanced STEM Tutor Bot. I can help you with high school **Physics**, **Chemistry**, **Biology**, and **Math**. </p>
+                    <p class="mt-2 text-sm opacity-70">Ask me something like "Explain Newton's Second Law" or "What is photosynthesis?"</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <footer class="p-4 bg-gray-200 border-t border-gray-300">
+            <form id="chat-form" class="flex gap-2">
+                <input type="text" id="user-input" placeholder="Ask a STEM question..." 
+                       class="flex-grow p-3 border border-gray-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition duration-150"
+                       required>
+                <button type="submit" id="send-button" disabled
+                        class="bg-teal-600 text-white p-3 rounded-lg font-semibold hover:bg-teal-700 disabled:bg-gray-400 transition duration-150 shadow-md">
+                    Send
+                </button>
+            </form>
+        </footer>
+    </div>
+
+    <!-- JavaScript Logic -->
+    <script>
+        const chatForm = document.getElementById('chat-form');
+        const userInput = document.getElementById('user-input');
+        const chatWindow = document.getElementById('chat-window');
+        const sendButton = document.getElementById('send-button');
+        const statusElement = document.getElementById('status');
+        
+        const MATH_DELIMITER = /\\$\\$(.*?)\\$\\$/g; // Matches $$...$$
+        
+        // Use an interval to simulate checking if the backend model is ready.
+        // In a real Flask app, you'd check a dedicated status endpoint, 
+        // but here we assume it's loading initially and ready shortly after.
+        let isBotReady = false;
+        const initialLoadCheck = setInterval(() => {
+            if (!isBotReady) {
+                statusElement.textContent = 'Ready';
+                statusElement.classList.remove('bg-teal-500');
+                statusElement.classList.add('bg-green-500');
+                sendButton.disabled = false;
+                isBotReady = true;
+                clearInterval(initialLoadCheck);
+            }
+        }, 3000); // Wait 3 seconds for Python initialization to complete
+
+        // Helper function to convert text (including markdown and LaTeX) to HTML
+        function convertMarkdownToHtml(markdownText) {
+            let html = markdownText;
+
+            // 1. Handle MathJax/LaTeX $$...$$ (display mode)
+            // Replace $$...$$ with <div class="math-block">...</div>
+            html = html.replace(MATH_DELIMITER, (match, formula) => {
+                // Ensure double backslashes for MathJax
+                const cleanedFormula = formula.replace(/\\\\/g, '\\');
+                return `<div class="math-block">$$${cleanedFormula}$$</div>`;
+            });
+
+            // 2. Handle simple markdown: **bold**, *italic*, \n\n (paragraphs), lists
+            html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>'); // **bold**
+            html = html.replace(/\*(.*?)\*/g, '<em>$1</em>'); // *italic*
+            
+            // Simple list handling (for •)
+            html = html.replace(/• (.*)/g, '<li class="ml-4 list-disc">$1</li>');
+            html = html.replace(/<li class="ml-4 list-disc">/g, '<ul><li class="ml-4 list-disc">');
+            html = html.replace(/<\/li><ul>/g, '</li>');
+
+            // 3. Newlines to <br> (after block elements are handled)
+            html = html.replace(/\n\n/g, '</p><p>');
+            html = html.replace(/\n/g, '<br>');
+            
+            // 4. Wrap everything in a paragraph
+            html = `<p>${html}</p>`;
+            
+            return html;
+        }
+
+        // Function to create a message bubble
+        function createMessageBubble(message, sender, confidence = null) {
+            const isUser = sender === 'user';
+            const messageContainer = document.createElement('div');
+            messageContainer.className = isUser ? 'flex justify-end' : 'flex justify-start';
+
+            const messageBubble = document.createElement('div');
+            messageBubble.className = `p-3 shadow max-w-xs md:max-w-md transition-all duration-300 ease-in-out markdown-content ${
+                isUser 
+                ? 'bg-teal-500 text-white rounded-tl-xl rounded-bl-xl rounded-br-xl' 
+                : 'bg-teal-100 text-gray-800 rounded-tr-xl rounded-bl-xl rounded-br-xl'
+            }`;
+
+            if (!isUser) {
+                const header = document.createElement('p');
+                header.className = 'font-semibold text-teal-700 mb-1';
+                header.textContent = 'Tutor Bot';
+                messageBubble.appendChild(header);
+            }
+            
+            const messageHtml = convertMarkdownToHtml(message);
+            messageBubble.innerHTML += messageHtml;
+            
+            if (!isUser && confidence !== null && confidence > 0) {
+                const confidenceNote = document.createElement('div');
+                confidenceNote.className = 'text-xs mt-2 pt-1 border-t border-teal-200 text-teal-600 opacity-80';
+                confidenceNote.textContent = `Confidence: ${(confidence * 100).toFixed(0)}%`;
+                messageBubble.appendChild(confidenceNote);
+            }
+
+
+            messageContainer.appendChild(messageBubble);
+            chatWindow.appendChild(messageContainer);
+            
+            // Re-render MathJax after adding new content
+            if (window.MathJax) {
+                window.MathJax.typesetPromise([messageBubble]).catch((err) => console.error("MathJax error:", err));
+            }
+
+            // Scroll to the bottom
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+
+        // Handle form submission
+        chatForm.addEventListener('submit', async function(event) {
+            event.preventDefault();
+            const message = userInput.value.trim();
+
+            if (message === '' || !isBotReady) return;
+
+            // 1. Display user message
+            createMessageBubble(message, 'user');
+            userInput.value = '';
+            sendButton.disabled = true;
+            statusElement.textContent = 'Thinking...';
+            statusElement.classList.remove('bg-green-500');
+            statusElement.classList.add('bg-orange-500');
+
+            // 2. Send message to Flask API
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message: message })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Server returned an error.');
+                }
+
+                const data = await response.json();
+                const botResponse = data.response || "Sorry, I couldn't get a response.";
+                const confidence = data.confidence || null;
+
+                // 3. Display bot message
+                createMessageBubble(botResponse, 'bot', confidence);
+
+            } catch (error) {
+                console.error('Error sending message:', error);
+                createMessageBubble("A connection error occurred. Check the server logs.", 'bot');
+            } finally {
+                sendButton.disabled = false;
+                statusElement.textContent = 'Ready';
+                statusElement.classList.remove('bg-orange-500');
+                statusElement.classList.add('bg-green-500');
+                userInput.focus();
+            }
+        });
+        
+        // Initial status update
+        document.addEventListener('DOMContentLoaded', () => {
+            statusElement.textContent = 'Initializing Models...';
+        });
+    </script>
+</body>
+</html>
