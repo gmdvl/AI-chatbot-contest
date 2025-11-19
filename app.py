@@ -59,8 +59,7 @@ def chat():
         response_dict = STEM_BOT.chat(user_message)
         
         return jsonify({
-            'response': response_dict.get('answer', "I'm still learning and don't have an answer for that yet."),
-            'confidence': response_dict.get('confidence', 0.0)
+            'response': response_dict.get('answer', "I'm still learning and don't have an answer for that yet.")
         })
 
     except Exception as e:
